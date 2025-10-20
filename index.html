@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="th">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>CHATBOT_WEB — PSU Bot</title>
+  <link rel="stylesheet" href="theme.css" />
+</head>
+<body class="dark-theme">
+  <div class="container">
+    <header>
+      <span class="dot" aria-hidden="true"></span>
+      <div>
+        <h1>PSU Bot</h1>
+        <div class="sub">Typing Indicator + Suggestions</div>
+      </div>
+    </header>
+
+    <div id="chat" aria-live="polite">
+      <div class="msg bot">สวัสดี! เลือกคำถามที่สนใจด้านล่าง หรือลองพิมพ์ถามได้เลย 😊</div>
+    </div>
+
+    <div class="suggest-row" id="suggestRow"></div>
+
+    <div class="meta-row">
+      <!-- Typing indicator -->
+      <div id="typingIndicator" class="typing-indicator" aria-hidden="true">
+        <strong class="agent">PSU Bot</strong>
+        <span class="label">กำลังพิมพ์</span>
+        <span class="typing-dots" aria-label="กำลังพิมพ์" role="status">
+          <span></span><span></span><span></span>
+        </span>
+      </div>
+      <div id="statusText">พร้อมส่ง</div>
+    </div>
+
+    <form id="composer" class="composer" autocomplete="off">
+      <input id="input" type="text" placeholder="พิมพ์ข้อความของคุณ…" aria-label="พิมพ์ข้อความ" />
+      <button id="sendBtn" type="submit">ส่ง</button>
+    </form>
+  </div>
+
+  <script src="typing-indicator.js"></script>
+  <script src="suggestion_questions.js"></script>
+  <script>
+    const chat = document.getElementById('chat');
+    const form = document.getElementById('composer');
+    const input = document.getElementById('input');
+    const statusText = document.getElementById('statusText');
+    const indicator = new TypingIndicator(document.getElementById('typingIndicator'), { minShowMs: 600 });
+    const suggestRow = document.getElementById('suggestRow');
+
+    function addMessage(text, who = 'user') {
+      const div = document.createElement('div');
+      div.className = `msg ${who}`;
+      div.textContent = text;
+      chat.appendChild(div);
+      chat.scrollTop = chat.scrollHeight;
+    }
+
+    async function callBackend(userText) {
+      const resp = await fetch('/api/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: userText })
+      });
+      if (!resp.ok) {
+        const err = await resp.json().catch(() => ({}));
+        throw new Error(err.error || `HTTP ${resp.status}`);
+      }
+      const data = await resp.json();
+      return data.reply;
+    }
+
+    async function handleSend(text) {
+      if (!text.trim()) return;
+      addMessage(text.trim(), 'user');
+      input.value = '';
+      statusText.textContent = 'บอทกำลังพิมพ์…';
+      indicator.show();
+
+      try {
+        const reply = await callBackend(text);
+        addMessage(reply, 'bot');
+        statusText.textContent = 'พร้อมส่ง';
+      } catch (e) {
+        addMessage('เกิดข้อผิดพลาดจากเซิร์ฟเวอร์: ' + e.message, 'bot');
+        statusText.textContent = 'พบข้อผิดพลาด';
+      } finally {
+        indicator.hide();
+      }
+    }
+    window.handleSend = handleSend;
+
+    form.addEventListener('submit', (e) => {
+      e.preventDefault();
+      handleSend(input.value);
+    });
+
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault();
+        form.requestSubmit();
+      }
+    });
+
+    renderSuggestions(suggestRow);
+  </script>
+</body>
+</html>
